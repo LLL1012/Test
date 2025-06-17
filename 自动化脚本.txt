@@ -1,0 +1,166 @@
+#!/bin/bash
+
+# 配置：Docker 网络默认配置
+DEFAULT_NETWORK_NAME="bridge"
+DEFAULT_SUBNET="172.18.0.0/16"
+DEFAULT_GATEWAY="172.18.0.1"
+DEFAULT_NETWORK_DRIVER="bridge"
+LOG_FILE="/var/log/docker_network_management.log"
+
+# 获取当前的 Docker 网络列表
+function get_docker_networks() {
+  echo "获取当前 Docker 网络配置..."
+  docker network ls
+}
+
+# 获取 Docker 网络的详细信息
+function get_network_details() {
+  read -p "请输入要查看的 Docker 网络名称: " network_name
+  echo "查看网络 $network_name 详细信息..."
+  docker network inspect "$network_name"
+}
+
+# 检查 Docker 网络是否可用
+function check_network_health() {
+  read -p "请输入要检查健康状态的 Docker 网络名称: " network_name
+  echo "正在检查网络 $network_name 的健康状态..."
+  # 检查网络是否存在
+  network_exists=$(docker network ls --filter name="$network_name" -q)
+  if [ -z "$network_exists" ]; then
+    echo "网络 $network_name 不存在。"
+    return
+  fi
+  # 检查网络是否有容器连接
+  container_count=$(docker network inspect "$network_name" | grep -o '"Name":' | wc -l)
+  if [ "$container_count" -gt 0 ]; then
+    echo "网络 $network_name 健康。"
+  else
+    echo "警告: 网络 $network_name 没有容器连接，请检查网络配置。"
+  fi
+}
+
+# 创建新的 Docker 网络
+function create_network() {
+  read -p "请输入新网络名称: " new_network_name
+  read -p "请输入子网 (默认 $DEFAULT_SUBNET): " subnet
+  subnet=${subnet:-$DEFAULT_SUBNET}
+  read -p "请输入网关 (默认 $DEFAULT_GATEWAY): " gateway
+  gateway=${gateway:-$DEFAULT_GATEWAY}
+  
+  echo "创建新的 Docker 网络 $new_network_name..."
+  docker network create \
+    --subnet "$subnet" \
+    --gateway "$gateway" \
+    --driver "$DEFAULT_NETWORK_DRIVER" \
+    "$new_network_name"
+  
+  if [ $? -eq 0 ]; then
+    log_action "网络 $new_network_name 创建成功!"
+    echo "网络 $new_network_name 创建成功!"
+  else
+    log_action "网络 $new_network_name 创建失败!"
+    echo "网络创建失败!"
+  fi
+}
+
+# 删除指定的 Docker 网络
+function remove_network() {
+  read -p "请输入要删除的 Docker 网络名称: " network_name
+  echo "删除 Docker 网络 $network_name..."
+  docker network rm "$network_name"
+  
+  if [ $? -eq 0 ]; then
+    log_action "网络 $network_name 删除成功!"
+    echo "网络 $network_name 删除成功!"
+  else
+    log_action "网络 $network_name 删除失败!"
+    echo "网络删除失败!"
+  fi
+}
+
+# 将容器加入到指定的 Docker 网络
+function connect_container_to_network() {
+  read -p "请输入要连接的 Docker 容器名称: " container_name
+  read -p "请输入要连接的 Docker 网络名称: " network_name
+  echo "将容器 $container_name 连接到网络 $network_name..."
+  docker network connect "$network_name" "$container_name"
+  
+  if [ $? -eq 0 ]; then
+    log_action "容器 $container_name 已连接到网络 $network_name."
+    echo "容器 $container_name 已连接到网络 $network_name."
+  else
+    log_action "容器 $container_name 连接到网络 $network_name 失败!"
+    echo "容器连接失败!"
+  fi
+}
+
+# 从 Docker 网络中断开容器
+function disconnect_container_from_network() {
+  read -p "请输入要断开连接的 Docker 容器名称: " container_name
+  read -p "请输入要断开连接的 Docker 网络名称: " network_name
+  echo "从网络 $network_name 断开容器 $container_name..."
+  docker network disconnect "$network_name" "$container_name"
+  
+  if [ $? -eq 0 ]; then
+    log_action "容器 $container_name 已从网络 $network_name 断开."
+    echo "容器 $container_name 已从网络 $network_name 断开."
+  else
+    log_action "容器 $container_name 从网络 $network_name 断开失败!"
+    echo "容器断开失败!"
+  fi
+}
+
+# 日志记录
+function log_action() {
+  echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "$LOG_FILE"
+}
+
+# 显示主菜单
+function show_menu() {
+  echo "选择操作:"
+  echo "1. 获取当前 Docker 网络配置"
+  echo "2. 查看指定 Docker 网络详细信息"
+  echo "3. 检查 Docker 网络健康状态"
+  echo "4. 创建新的 Docker 网络"
+  echo "5. 删除 Docker 网络"
+  echo "6. 将容器连接到 Docker 网络"
+  echo "7. 从 Docker 网络断开容器"
+  echo "8. 退出"
+}
+
+# 主程序
+while true; do
+  show_menu
+  read -p "请输入选择 (1-8): " choice
+  
+  case "$choice" in
+    1)
+      get_docker_networks
+      ;;
+    2)
+      get_network_details
+      ;;
+    3)
+      check_network_health
+      ;;
+    4)
+      create_network
+      ;;
+    5)
+      remove_network
+      ;;
+    6)
+      connect_container_to_network
+      ;;
+    7)
+      disconnect_container_from_network
+      ;;
+    8)
+      echo "退出程序..."
+      break
+      ;;
+    *)
+      echo "无效选择，请重新输入。"
+      ;;
+  esac
+done

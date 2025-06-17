@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ansible主机管理系统</title>
+    <link rel="stylesheet" href="https://unpkg.com/element-plus/dist/index.css">
+    <style>
+        body {
+            margin: 0;
+            font-family: 'Arial', sans-serif;
+            background: #f4f6f9;
+            color: #333;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .container {
+            width: 80%;
+            max-width: 1200px;
+            margin-top: 30px;
+        }
+        .header {
+            background: #1e2a3d;
+            color: #ffffff;
+            padding: 20px;
+            text-align: center;
+            border-radius: 8px;
+            box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 2.5rem;
+        }
+        .statistics {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 30px;
+        }
+        .stat-card {
+            background-color: #ffffff;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            width: 48%;
+            text-align: center;
+        }
+        .stat-card h3 {
+            font-size: 1.5rem;
+            margin: 10px 0;
+        }
+        .stat-card p {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+        .host-list {
+            margin-top: 40px;
+        }
+        .host-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            background-color: #ffffff;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        .host-table th, .host-table td {
+            padding: 12px;
+            text-align: center;
+        }
+        .host-table th {
+            background-color: #1e2a3d;
+            color: #ffffff;
+        }
+        .host-table tr:nth-child(even) {
+            background-color: #f2f2f2;
+        }
+        .actions {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+        }
+        .action-button {
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .action-button:hover {
+            background-color: #2980b9;
+        }
+        .add-button {
+            background-color: #2ecc71;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 5px;
+            width: 100%;
+            cursor: pointer;
+            font-size: 1.2rem;
+        }
+        .add-button:hover {
+            background-color: #27ae60;
+        }
+        .el-dialog {
+            max-width: 500px;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app" class="container">
+        <div class="header">
+            <h1>Ansible 主机管理系统</h1>
+        </div>
+
+        <!-- 统计信息 -->
+        <div class="statistics">
+            <div class="stat-card">
+                <h3>在线主机数</h3>
+                <p>{{ onlineCount }}</p>
+            </div>
+            <div class="stat-card">
+                <h3>离线主机数</h3>
+                <p>{{ offlineCount }}</p>
+            </div>
+        </div>
+
+        <!-- 主机列表 -->
+        <div class="host-list">
+            <table class="host-table">
+                <thead>
+                    <tr>
+                        <th>主机名</th>
+                        <th>状态</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="host in hostList" :key="host.name">
+                        <td>{{ host.displayName || host.name }}</td>
+                        <td :class="{'status-online': host.status === 'online', 'status-offline': host.status === 'offline'}">
+                            {{ host.status === 'SUCCESS' ? '在线' : '离线' }}
+                        </td>
+                        <td>
+                            <div class="actions">
+                                <button class="action-button" @click="editHost(host)">编辑</button>
+                                <button class="action-button" @click="deleteHost(host)">删除</button>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <!-- 添加新主机按钮 -->
+            <button class="add-button" @click="showAddDialog">添加新主机</button>
+
+            <!-- 编辑主机对话框 -->
+            <el-dialog v-model="editDialogVisible" title="编辑主机信息" width="30%">
+                <el-form :model="editingHost">
+                    <el-form-item label="显示名称">
+                        <el-input v-model="editingHost.displayName" placeholder="请输入显示名称"></el-input>
+                    </el-form-item>
+                </el-form>
+                <template #footer>
+                    <span>
+                        <el-button @click="editDialogVisible = false">取消</el-button>
+                        <el-button type="primary" @click="saveEdit">确定</el-button>
+                    </span>
+                </template>
+            </el-dialog>
+
+            <!-- 添加主机对话框 -->
+            <el-dialog v-model="addDialogVisible" title="添加新主机" width="30%">
+                <el-form :model="newHost">
+                    <el-form-item label="主机名">
+                        <el-input v-model="newHost.name" placeholder="请输入主机名"></el-input>
+                    </el-form-item>
+                    <el-form-item label="端口号">
+                        <el-input v-model="newHost.port" placeholder="请输入端口号"></el-input>
+                    </el-form-item>
+                </el-form>
+                <template #footer>
+                    <span>
+                        <el-button @click="addDialogVisible = false">取消</el-button>
+                        <el-button type="primary" @click="addHost">确定</el-button>
+                    </span>
+                </template>
+            </el-dialog>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/element-plus"></script>
+    <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
+
+    <script>
+        const { createApp, ref, computed } = Vue;
+
+        const app = createApp({
+            setup() {
+                const hostList = ref([]);
+                const onlineCount = computed(() => hostList.value.filter(host => host.status === 'SUCCESS').length);
+                const offlineCount = computed(() => hostList.value.filter(host => host.status === 'UNREACHABLE').length);
+                const editingHost = ref({});
+                const newHost = ref({ name: '', port: '' });
+                const editDialogVisible = ref(false);
+                const addDialogVisible = ref(false);
+
+                // 获取主机列表
+                const fetchHosts = async () => {
+                    try {
+                        const response = await axios.get('http://localhost:5000/api/hosts');
+                        console.log('Received hosts:', response.data);  // Ensure data is fetched
+                        hostList.value = response.data;
+                    } catch (error) {
+                        console.error('Error fetching hosts:', error);
+                    }
+                };
+
+                // 编辑主机
+                const editHost = (host) => {
+                    // 仅更新前端显示的名称，而不会与后端交互
+                    editingHost.value = { ...host };  // 将选中的主机信息复制到编辑框
+                    editDialogVisible.value = true;   // 弹出编辑对话框
+                };
+
+                // 保存编辑
+                const saveEdit = async () => {
+                    try {
+                        // 发送 PUT 请求到后端更新主机名称
+                        await axios.put(`http://localhost:5000/api/hosts/${editingHost.value.name}`, {
+                            name: editingHost.value.displayName  // 只更新显示名称
+                        });
+                        editDialogVisible.value = false;  // 关闭编辑对话框
+                        fetchHosts();  // 重新加载主机列表
+                    } catch (error) {
+                        console.error('Error saving edit:', error);
+                    }
+                };
+
+                // 删除主机
+                const deleteHost = async (host) => {
+                    try {
+                        await axios.delete(`http://localhost:5000/api/hosts/${host.name}`);
+                        fetchHosts();
+                    } catch (error) {
+                        console.error('Error deleting host:', error);
+                    }
+                };
+
+                // 添加主机
+                const addHost = async () => {
+                    try {
+                        await axios.post('http://localhost:5000/api/hosts', newHost.value);
+                        addDialogVisible.value = false;
+                        fetchHosts();
+                    } catch (error) {
+                        console.error('Error adding host:', error);
+                    }
+                };
+
+                // 显示添加对话框
+                const showAddDialog = () => {
+                    addDialogVisible.value = true;
+                };
+
+                // 初始化时获取主机列表
+                fetchHosts();
+
+                return {
+                    hostList,
+                    onlineCount,
+                    offlineCount,
+                    editingHost,
+                    newHost,
+                    editDialogVisible,
+                    addDialogVisible,
+                    addHost,
+                    deleteHost,
+                    editHost,
+                    saveEdit,
+                    showAddDialog
+                };
+            }
+        });
+
+        app.use(ElementPlus);
+        app.mount('#app');
+    </script>
+</body>
+</html>
